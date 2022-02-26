@@ -17,7 +17,7 @@
             "request": "launch",
             "mainClass": "com.bryanconradhart.hobby.App",
             "projectName": "wordle-guess-optimizer",
-            "vmArgs": "-Xss1G -Xms32G"
+            "vmArgs": "-Xss1G -Xms20G"
         }
     ]
 }
