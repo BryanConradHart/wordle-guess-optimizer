@@ -3,6 +3,7 @@ package com.bryanconradhart.hobby;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.Writer;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -56,21 +57,26 @@ public class App
         System.out.println();
         Stream<Solution> solutions = getSolutions(data.getAnswers(), guesses);
         Map<Set<String>, Double> guessScores = getAvergageMatchingAnswersPerGuess(solutions);
-        StringBuilder outputText = new StringBuilder();
-
-        guessScores.entrySet().stream()
-            .sorted((l, r) -> r.getValue().compareTo(l.getValue()))
-            .forEach(entry -> outputText.append(entry.getKey() + ": " + entry.getValue() + "\n"));
-
+        
         try(FileWriter writer = new FileWriter(new File("Results.txt"), false)) {
-            writer.write(outputText.toString());
+            guessScores.entrySet().stream()
+                .sorted((l, r) -> r.getValue().compareTo(l.getValue()))
+                .forEachOrdered(entry -> appendOutput(writer, entry.getKey(), entry.getValue()));
+        }
+    }
+
+    private void appendOutput(Writer writer, Set<String> guess, double score) {
+        try {
+            writer.write(guess + ": " + score + "\n");
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 
 	private Set<Set<String>> setupGuesses(Data data) {
         Set<String> validWords = new HashSet<>(data.getGuesses());
         validWords.addAll(data.getAnswers());
-        Set<Set<String>> guesses = new HashSet<Set<String>>(validWords.size());
+        Set<Set<String>> guesses = new HashSet<>(validWords.size());
         for(String guess : validWords) {
             Set<String> guessCombo = new HashSet<>();
             guessCombo.add(guess);
@@ -92,13 +98,12 @@ public class App
 	}
 
 	private Solution getRemainingAnswers(Set<String> guess, String potentialSolution) {
-		Solution solution =  new Solution(
+		return new Solution(
                 potentialSolution,
                 guess,
                 guess.stream()
                     .flatMap(guessWord -> getAnswersThatFit(guessWord, potentialSolution).stream())
                     .collect(Collectors.toSet()));
-        return solution;
 	}
 
     public Collection<String> getAnswersThatFit(String guess, String solution) {
