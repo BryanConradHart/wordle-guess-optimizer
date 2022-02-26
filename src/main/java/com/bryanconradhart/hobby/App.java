@@ -54,8 +54,8 @@ public class App
         System.out.println("Guess combinations: " + numGuesses);
 
         System.out.println();
-        Stream<Solution> remainingAnswers = getRemainingAnswers(data.getAnswers(), guesses);
-        Map<Set<String>, Double> guessScores = getAverageNumberOfRemainingAnswers(remainingAnswers);
+        Stream<Solution> solutions = getSolutions(data.getAnswers(), guesses);
+        Map<Set<String>, Double> guessScores = getAvergageMatchingAnswersPerGuess(solutions);
         StringBuilder outputText = new StringBuilder();
 
         guessScores.entrySet().stream()
@@ -79,12 +79,12 @@ public class App
         return guesses;
     }
 
-    private Stream<Solution> getRemainingAnswers(Set<String> potentialSolutions, Set<Set<String>> guesses) {
+    private Stream<Solution> getSolutions(Set<String> potentialSolutions, Set<Set<String>> guesses) {
         return guesses.parallelStream()
-            .flatMap(guess -> getRaminingAnswers(guess, potentialSolutions));
+            .flatMap(guess -> getSolution(potentialSolutions, guess));
     }
 
-    private Stream<Solution> getRaminingAnswers(Set<String> guess, Set<String> potentialSolutions) {
+    private Stream<Solution> getSolution(Set<String> potentialSolutions, Set<String> guess) {
 		Stream<Solution> remainingAnswers = potentialSolutions.stream()
             .map(potentialSolution -> getRemainingAnswers(guess, potentialSolution));
         onGuessCompleted();
@@ -135,8 +135,8 @@ public class App
         return true;
     }
 
-    private Map<Set<String>, Double> getAverageNumberOfRemainingAnswers(Stream<Solution> remainingAnswers) {
-        return remainingAnswers
+    private Map<Set<String>, Double> getAvergageMatchingAnswersPerGuess(Stream<Solution> solutions) {
+        return solutions
             .collect(
                 Collectors.groupingByConcurrent(
                     Solution::getGuess,
