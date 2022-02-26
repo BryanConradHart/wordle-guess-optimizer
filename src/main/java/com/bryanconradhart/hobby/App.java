@@ -23,24 +23,22 @@ import com.google.gson.JsonSyntaxException;
 
 public class App 
 {
-
-    private long numGuesses = 0;
-    private long completedGuesses = 0;
-    private Instant startTime = Instant.now();
-
     public static void main( String[] args )
     {
         Long start = System.currentTimeMillis();
         try {
-           new App().run();
+            new App().run();
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
             System.out.println("complete calculation: " + ((System.currentTimeMillis() - start)/1000d));
         }
     }
-
+    
     private final Data data;
+    private long completedGuesses = 0;
+    private Instant startTime = Instant.now();
+    private long numGuesses = 0;
 
     public App() throws JsonSyntaxException, JsonIOException, IOException, URISyntaxException {
         data = new Gson().fromJson(Files.newBufferedReader(Paths.get(getClass().getClassLoader().getResource("data.json").toURI())), Data.class);
@@ -74,6 +72,7 @@ public class App
     }
 
 	private Set<Set<String>> setupGuesses(Data data) {
+        //TODO add 2nd word
         Set<String> validWords = new HashSet<>(data.getGuesses());
         validWords.addAll(data.getAnswers());
         Set<Set<String>> guesses = new HashSet<>(validWords.size());
@@ -85,59 +84,59 @@ public class App
         return guesses;
     }
 
-    private Stream<Solution> getSolutions(Set<String> potentialSolutions, Set<Set<String>> guesses) {
+    private Stream<Solution> getSolutions(Set<String> validAnswers, Set<Set<String>> guesses) {
         return guesses.parallelStream()
-            .flatMap(guess -> getSolution(potentialSolutions, guess));
+            .flatMap(guess -> getSolutionsForGuess(validAnswers, guess));
     }
 
-    private Stream<Solution> getSolution(Set<String> potentialSolutions, Set<String> guess) {
-		Stream<Solution> remainingAnswers = potentialSolutions.stream()
-            .map(potentialSolution -> getRemainingAnswers(guess, potentialSolution));
+    private Stream<Solution> getSolutionsForGuess(Set<String> validAnswers, Set<String> guess) {
+		Stream<Solution> remainingAnswers = validAnswers.stream()
+            .map(answer -> getSolutionForGuess(validAnswers, answer, guess));
         onGuessCompleted();
         return remainingAnswers;
 	}
 
-	private Solution getRemainingAnswers(Set<String> guess, String potentialSolution) {
+	private Solution getSolutionForGuess(Set<String> validAnswers, String answer, Set<String> guess) {
 		return new Solution(
-                potentialSolution,
+                answer,
                 guess,
                 guess.stream()
-                    .flatMap(guessWord -> getAnswersThatFit(guessWord, potentialSolution).stream())
+                    .flatMap(guessWord -> getEliminatedAnswers(validAnswers, answer, guessWord).stream())
                     .collect(Collectors.toSet()));
 	}
 
-    public Collection<String> getAnswersThatFit(String guess, String solution) {
-        return data.getAnswers().stream()
-            .filter(answer -> doesAnswerFit(answer, guess, solution))
+    public Collection<String> getEliminatedAnswers(Set<String> validAnswers, String answer, String guess) {
+        return validAnswers.stream()
+            .filter(potentialAnswer -> isAnswerEliminated(potentialAnswer, answer, guess))
             .collect(Collectors.toList());        
     }
 
-    public boolean doesAnswerFit(String answer, String guess, String solution) {
+    public boolean isAnswerEliminated(String potentialAnswer, String actualAnswer, String guess) {
         //guesses that eliminate the most answers are the best
-        return !answerHasAllGreenSquaresAtCorrectPosition(answer, guess, solution) ||
-               !answerContainsAllYellowSquareLetters(answer, guess, solution) ||
-               !answerContainsNoBlackSquares(answer, guess, solution);
+        return !answerHasAllGreenSquareLettersAtCorrectPosition(potentialAnswer, actualAnswer, guess) ||
+               !answerContainsAllYellowSquareLetters(potentialAnswer, actualAnswer, guess) ||
+                answerContainsBlackSquareLetters(potentialAnswer, actualAnswer, guess);
     }
 
-    private boolean answerHasAllGreenSquaresAtCorrectPosition(String answer, String guess, String solution) {
+    private boolean answerHasAllGreenSquareLettersAtCorrectPosition(String potentialAnswer, String actualAnswer, String guess) {
         for(int i = 0; i<5; i++) {
-            if(guess.charAt(i)==solution.charAt(i) && guess.charAt(i)!=answer.charAt(i)) return false;
+            if(guess.charAt(i)==actualAnswer.charAt(i) && guess.charAt(i)!=potentialAnswer.charAt(i)) return false;
         }
         return true;
     }
 
-    private boolean answerContainsAllYellowSquareLetters(String answer, String guess, String solution) {
+    private boolean answerContainsAllYellowSquareLetters(String potentialAnswer, String actualAnswer, String guess) {
         for(char ch : guess.toCharArray()) {
-            if(solution.contains(String.valueOf(ch)) && !answer.contains(String.valueOf(ch))) return false;
+            if(actualAnswer.contains(String.valueOf(ch)) && !potentialAnswer.contains(String.valueOf(ch))) return false;
         }
         return true;
     }
 
-    private boolean answerContainsNoBlackSquares(String answer, String guess, String solution) {
+    private boolean answerContainsBlackSquareLetters(String potentialAnswer, String actualAnswer, String guess) {
         for(char ch : guess.toCharArray()) {
-            if(!solution.contains(String.valueOf(ch)) && answer.contains(String.valueOf(ch))) return false;
+            if(!actualAnswer.contains(String.valueOf(ch)) && potentialAnswer.contains(String.valueOf(ch))) return true;
         }
-        return true;
+        return false;
     }
 
     private Map<Set<String>, Double> getAvergageMatchingAnswersPerGuess(Stream<Solution> solutions) {
