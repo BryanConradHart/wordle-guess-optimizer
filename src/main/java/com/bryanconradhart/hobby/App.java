@@ -144,14 +144,11 @@ public class App
     }
 
     private void onGuessCompleted() {
-        long oldPercentComplete = (100*completedGuesses++)/numGuesses;
-        long currentPercentComplete = (100*completedGuesses)/numGuesses;
-        
-        if(currentPercentComplete > oldPercentComplete) {
+        if(++completedGuesses%100 == 0) {
             Duration elapsedTime = Duration.between(startTime, Instant.now());
             Duration expectedDuration = Duration.ofMillis(Math.round(elapsedTime.toMillis() * (numGuesses/(double)completedGuesses)));
             Duration expectedRemaining = expectedDuration.minus(elapsedTime);
-            System.out.print("\r" + currentPercentComplete + "% complete: " + completedGuesses + " of " + numGuesses + ". Estimated remaining time: " + expectedRemaining.truncatedTo(ChronoUnit.SECONDS));
+            System.out.print("\r" + ((100*completedGuesses)/numGuesses) + "% complete: " + completedGuesses + " of " + numGuesses + ". Estimated remaining time: " + expectedRemaining.truncatedTo(ChronoUnit.SECONDS));
         }
     }
 }
