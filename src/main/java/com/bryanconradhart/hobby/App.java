@@ -10,11 +10,16 @@ import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 import com.google.gson.Gson;
@@ -25,20 +30,18 @@ public class App
 {
     public static void main( String[] args )
     {
-        Long start = System.currentTimeMillis();
+        Instant start = Instant.now();
         try {
-            new App().run();
+            int guessDepth = args != null && args.length > 0 ? Integer.parseInt(args[0]) : 1;
+            new App().run(guessDepth);
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
-            System.out.println("complete calculation: " + ((System.currentTimeMillis() - start)/1000d));
+            System.out.println("\ncomplete calculation: " + Duration.between(start, Instant.now()).truncatedTo(ChronoUnit.SECONDS));
         }
     }
     
     private final Data data;
-    private long completedGuesses = 0;
-    private Instant startTime = Instant.now();
-    private long numGuesses = 0;
 
     public App() throws JsonSyntaxException, JsonIOException, IOException, URISyntaxException {
         data = new Gson().fromJson(Files.newBufferedReader(Paths.get(getClass().getClassLoader().getResource("data.json").toURI())), Data.class);
@@ -47,13 +50,10 @@ public class App
         System.out.println("answers: " + data.getAnswers().size() + "\t valid words: " + data.getGuesses().size());
     }
 
-    private void run() throws IOException {
-        Set<Set<String>> guesses = setupGuesses(data);
-        numGuesses = guesses.size();
-        System.out.println("Guess combinations: " + numGuesses);
+    private void run(int guessDepth) throws IOException {
+        Stream<Set<String>> guesses = setupGuesses(guessDepth, data);
 
-        System.out.println();
-        Stream<Solution> solutions = getSolutions(data.getAnswers(), guesses);
+        Stream<GuessPerformance> solutions = getSolutions(data.getAnswers(), guesses);
         Map<Set<String>, Double> guessScores = getAvergageMatchingAnswersPerGuess(solutions);
         
         try(FileWriter writer = new FileWriter(new File("Results.txt"), false)) {
@@ -71,38 +71,76 @@ public class App
         }
     }
 
-	private Set<Set<String>> setupGuesses(Data data) {
-        //TODO add 2nd word
-        Set<String> validWords = new HashSet<>(data.getGuesses());
-        validWords.addAll(data.getAnswers());
-        Set<Set<String>> guesses = new HashSet<>(validWords.size());
-        for(String guess : validWords) {
-            Set<String> guessCombo = new HashSet<>();
-            guessCombo.add(guess);
-            guesses.add(guessCombo);
-        }
-        return guesses;
+	private Stream<Set<String>> setupGuesses(int guessCount, Data data) {
+        String[] validGuesses = Stream.concat(data.getGuesses().stream(), data.getAnswers().stream())
+            .unordered()
+            .distinct()
+            .toArray(n->new String[n]);
+        int numGuessPermutations = (int) Math.pow(validGuesses.length, guessCount);
+        String[][] guesses = new String[numGuessPermutations][guessCount];
+        
+        System.out.println("\ngenerating guesses:");
+        AtomicLong guessesGenerated = new AtomicLong();
+        Instant generatingStartTime = Instant.now();
+        IntStream.range(0, numGuessPermutations)
+            .unordered()
+            .parallel()
+            .peek(guess-> onGuessCompleted(5000, generatingStartTime, numGuessPermutations, guessesGenerated.incrementAndGet()))
+            .forEach(i -> generateGuess(validGuesses, guesses[i], i));
+
+        System.out.println("\ncalculating number of unique guesses:");
+        AtomicLong guessesCounted = new AtomicLong();
+        Instant countingStartTime = Instant.now();
+        long numGuesses = Arrays.stream(guesses)
+            .unordered()
+            .parallel()
+            .peek(guess-> onGuessCompleted(5000, countingStartTime, numGuessPermutations, guessesCounted.incrementAndGet()))
+            .filter(guess -> Arrays.stream(guess).unordered().distinct().count() == guessCount)
+            .distinct()
+            .count();
+            
+        System.out.println("\nGuess combinations: " +  numGuesses);
+        System.out.println("solving guesses:");
+        AtomicLong solvedGuesses = new AtomicLong();
+        Instant solvingStartTime = Instant.now();
+        return Arrays.stream(guesses)
+            .unordered()
+            .parallel()
+            .map(this::toSet)
+            .filter(guess -> guess.size() == guessCount)
+            .distinct()
+            .peek(guess-> onGuessCompleted(10, solvingStartTime, numGuesses, solvedGuesses.incrementAndGet()));
     }
 
-    private Stream<Solution> getSolutions(Set<String> validAnswers, Set<Set<String>> guesses) {
-        return guesses.parallelStream()
+    private void generateGuess(String[] validGuesses, String[] emptyGuess, int guessNumber) {
+        for(int j=0; j<emptyGuess.length; j++) {
+            emptyGuess[j] = validGuesses[guessNumber/(int)Math.pow(validGuesses.length, j)%validGuesses.length];
+        }
+    }
+
+    private <T> Set<T> toSet(T[] input) {
+        Set<T> out = new HashSet<>(input.length);
+        Collections.addAll(out, input);
+        return out;
+    }
+
+    private Stream<GuessPerformance> getSolutions(Set<String> validAnswers, Stream<Set<String>> guesses) {
+        return guesses
             .flatMap(guess -> getSolutionsForGuess(validAnswers, guess));
     }
 
-    private Stream<Solution> getSolutionsForGuess(Set<String> validAnswers, Set<String> guess) {
-		Stream<Solution> remainingAnswers = validAnswers.stream()
+    private Stream<GuessPerformance> getSolutionsForGuess(Set<String> validAnswers, Set<String> guess) {
+		return validAnswers.stream()
             .map(answer -> getSolutionForGuess(validAnswers, answer, guess));
-        onGuessCompleted();
-        return remainingAnswers;
 	}
 
-	private Solution getSolutionForGuess(Set<String> validAnswers, String answer, Set<String> guess) {
-		return new Solution(
+	private GuessPerformance getSolutionForGuess(Set<String> validAnswers, String answer, Set<String> guess) {
+		return new GuessPerformance(
                 answer,
                 guess,
                 guess.stream()
                     .flatMap(guessWord -> getEliminatedAnswers(validAnswers, answer, guessWord).stream())
-                    .collect(Collectors.toSet()));
+                    .count());
 	}
 
     public Collection<String> getEliminatedAnswers(Set<String> validAnswers, String answer, String guess) {
@@ -139,20 +177,20 @@ public class App
         return false;
     }
 
-    private Map<Set<String>, Double> getAvergageMatchingAnswersPerGuess(Stream<Solution> solutions) {
+    private Map<Set<String>, Double> getAvergageMatchingAnswersPerGuess(Stream<GuessPerformance> solutions) {
         return solutions
             .collect(
                 Collectors.groupingByConcurrent(
-                    Solution::getGuess,
-                    Collectors.averagingDouble(solution -> solution.getMatchingAnswers().size())));
+                    GuessPerformance::getGuess,
+                    Collectors.averagingDouble(GuessPerformance::getNumberOfElimiminatedAnswers)));
     }
 
-    private void onGuessCompleted() {
-        if(++completedGuesses%100 == 0) {
+    private void onGuessCompleted(int printPeriod, Instant startTime, long totalGuesses, long completedGuesses) {
+        if(completedGuesses%printPeriod == 0) {
             Duration elapsedTime = Duration.between(startTime, Instant.now());
-            Duration expectedDuration = Duration.ofMillis(Math.round(elapsedTime.toMillis() * (numGuesses/(double)completedGuesses)));
+            Duration expectedDuration = Duration.ofMillis(Math.round(elapsedTime.toMillis() * (totalGuesses/(double)completedGuesses)));
             Duration expectedRemaining = expectedDuration.minus(elapsedTime);
-            System.out.print("\r" + ((100*completedGuesses)/numGuesses) + "% complete: " + completedGuesses + " of " + numGuesses + ". Estimated remaining time: " + expectedRemaining.truncatedTo(ChronoUnit.SECONDS));
+            System.out.print("\r" + ((100*completedGuesses)/totalGuesses) + "% complete: " + completedGuesses + " of " + totalGuesses + ". Estimated remaining time: " + expectedRemaining.truncatedTo(ChronoUnit.SECONDS));
         }
     }
 }
