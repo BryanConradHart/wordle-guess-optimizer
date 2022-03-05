@@ -2,7 +2,6 @@ package com.bryanconradhart.hobby;
 
 import java.io.File;
 import java.io.FileWriter;
-import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
@@ -16,7 +15,6 @@ import okio.Okio;
 
 public class App 
 {
-    
     public static void main( String[] args )
     {
         Instant start = Instant.now();

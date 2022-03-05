@@ -29,7 +29,7 @@ public class WordleGuessOptimizer {
         this.outputWriter = outputWriter;
     }
 
-    public void run() throws IOException {
+    public void run() {
         logger.println("answers: " + dictionary.answers().size() + "\t valid words: " + dictionary.guesses().size());
         Stream<String[]> guesses = setupGuesses(guessDepth, dictionary);
 
