@@ -51,10 +51,10 @@ public class App
     }
 
     private void run(int guessDepth) throws IOException {
-        Stream<Set<String>> guesses = setupGuesses(guessDepth, data);
+        Stream<String[]> guesses = setupGuesses(guessDepth, data);
 
         Stream<GuessPerformance> solutions = getSolutions(data.getAnswers(), guesses);
-        Map<Set<String>, Double> guessScores = getAvergageMatchingAnswersPerGuess(solutions);
+        Map<String[], Double> guessScores = getAvergageMatchingAnswersPerGuess(solutions);
         
         try(FileWriter writer = new FileWriter(new File("Results.txt"), false)) {
             guessScores.entrySet().stream()
@@ -63,82 +63,63 @@ public class App
         }
     }
 
-    private void appendOutput(Writer writer, Set<String> guess, double score) {
+    private void appendOutput(Writer writer, String[] guess, double score) {
         try {
-            writer.write(guess + ": " + score + "\n");
+            writer.write(Arrays.toString(guess) + ": " + score + "\n");
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
-	private Stream<Set<String>> setupGuesses(int guessCount, Data data) {
+	private Stream<String[]> setupGuesses(int guessCount, Data data) {
         String[] validGuesses = Stream.concat(data.getGuesses().stream(), data.getAnswers().stream())
             .unordered()
             .distinct()
             .toArray(n->new String[n]);
-        int numGuessPermutations = (int) Math.pow(validGuesses.length, guessCount);
-        String[][] guesses = new String[numGuessPermutations][guessCount];
+        String[][] guesses = new String[(int) Math.pow(validGuesses.length, guessCount)][guessCount];
         
         System.out.println("\ngenerating guesses:");
         AtomicLong guessesGenerated = new AtomicLong();
         Instant generatingStartTime = Instant.now();
-        IntStream.range(0, numGuessPermutations)
+        IntStream.range(0, guesses.length)
             .unordered()
             .parallel()
-            .peek(guess-> onGuessCompleted(5000, generatingStartTime, numGuessPermutations, guessesGenerated.incrementAndGet()))
+            .peek(guess-> onGuessCompleted(5000, generatingStartTime, guesses.length, guessesGenerated.incrementAndGet()))
             .forEach(i -> generateGuess(validGuesses, guesses[i], i));
 
-        System.out.println("\ncalculating number of unique guesses:");
-        AtomicLong guessesCounted = new AtomicLong();
-        Instant countingStartTime = Instant.now();
-        long numGuesses = Arrays.stream(guesses)
-            .unordered()
-            .parallel()
-            .peek(guess-> onGuessCompleted(5000, countingStartTime, numGuessPermutations, guessesCounted.incrementAndGet()))
-            .filter(guess -> Arrays.stream(guess).unordered().distinct().count() == guessCount)
-            .distinct()
-            .count();
-            
-        System.out.println("\nGuess combinations: " +  numGuesses);
+        System.out.println("\nGuess combinations: " +  guesses.length);
         System.out.println("solving guesses:");
         AtomicLong solvedGuesses = new AtomicLong();
         Instant solvingStartTime = Instant.now();
         return Arrays.stream(guesses)
             .unordered()
             .parallel()
-            .map(this::toSet)
-            .filter(guess -> guess.size() == guessCount)
             .distinct()
-            .peek(guess-> onGuessCompleted(10, solvingStartTime, numGuesses, solvedGuesses.incrementAndGet()));
+            .peek(guess-> onGuessCompleted(10, solvingStartTime, guesses.length, solvedGuesses.incrementAndGet()));
     }
 
     private void generateGuess(String[] validGuesses, String[] emptyGuess, int guessNumber) {
         for(int j=0; j<emptyGuess.length; j++) {
             emptyGuess[j] = validGuesses[guessNumber/(int)Math.pow(validGuesses.length, j)%validGuesses.length];
         }
+        Arrays.sort(emptyGuess);
     }
 
-    private <T> Set<T> toSet(T[] input) {
-        Set<T> out = new HashSet<>(input.length);
-        Collections.addAll(out, input);
-        return out;
-    }
-
-    private Stream<GuessPerformance> getSolutions(Set<String> validAnswers, Stream<Set<String>> guesses) {
+    private Stream<GuessPerformance> getSolutions(Set<String> validAnswers, Stream<String[]> guesses) {
         return guesses
             .flatMap(guess -> getSolutionsForGuess(validAnswers, guess));
     }
 
-    private Stream<GuessPerformance> getSolutionsForGuess(Set<String> validAnswers, Set<String> guess) {
+    private Stream<GuessPerformance> getSolutionsForGuess(Set<String> validAnswers, String[] guess) {
 		return validAnswers.stream()
             .map(answer -> getSolutionForGuess(validAnswers, answer, guess));
 	}
 
-	private GuessPerformance getSolutionForGuess(Set<String> validAnswers, String answer, Set<String> guess) {
+	private GuessPerformance getSolutionForGuess(Set<String> validAnswers, String answer, String[] guess) {
 		return new GuessPerformance(
                 answer,
                 guess,
-                guess.stream()
+                Arrays.stream(guess)
                     .flatMap(guessWord -> getEliminatedAnswers(validAnswers, answer, guessWord).stream())
                     .count());
 	}
@@ -177,7 +158,7 @@ public class App
         return false;
     }
 
-    private Map<Set<String>, Double> getAvergageMatchingAnswersPerGuess(Stream<GuessPerformance> solutions) {
+    private Map<String[], Double> getAvergageMatchingAnswersPerGuess(Stream<GuessPerformance> solutions) {
         return solutions
             .collect(
                 Collectors.groupingByConcurrent(

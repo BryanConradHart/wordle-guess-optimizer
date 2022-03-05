@@ -1,13 +1,12 @@
 package com.bryanconradhart.hobby;
 
-import java.util.Set;
 
 public class GuessPerformance {
     private final String solution;
-    private final Set<String> guess;
+    private final String[] guess;
     private final long numberOfElimiminatedAnswers;
 
-    public GuessPerformance(String solution, Set<String> guess, long numberOfEliminatedAnswers) {
+    public GuessPerformance(String solution, String[] guess, long numberOfEliminatedAnswers) {
         this.solution = solution;
         this.guess = guess;
         this.numberOfElimiminatedAnswers = numberOfEliminatedAnswers;
@@ -17,7 +16,7 @@ public class GuessPerformance {
         return solution;
     }
 
-    public Set<String> getGuess() {
+    public String[] getGuess() {
         return guess;
     }
 
